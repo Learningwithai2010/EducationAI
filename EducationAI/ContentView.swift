@@ -38,84 +38,152 @@ struct ContentView: View {
         }
 
 struct HomeView: View {
-    var body: some View {
-        VStack(spacing: 25) {
-            Spacer()
-            
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 60))
-                .foregroundColor(.blue)
-            
-            Text("EducationAI")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .foregroundColor(.blue)
-            
-            Text("Learn smarter, not harder")
-                .font(.subheadline)
-                .foregroundColor(.gray)
-            
-            Spacer()
-            
-            Button(action: {
-                // Will navigate to quiz later
-            }) {
-                Text("Start Learning")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .cornerRadius(12)
-            }
-            .padding(.horizontal, 30)
-            
-            Spacer()
-        }
-    }
-}
-
-struct ChatView: View {
-    @State private var messageText = ""
+    @State private var selectedTab: Int = 0
     
     var body: some View {
-        NavigationView {
-            VStack {
-                Spacer()
-                
-                Image(systemName: "message.fill")
-                    .font(.system(size: 50))
-                    .foregroundColor(.blue)
-                    .padding(.bottom, 10)
-                
-                Text("AI Tutor")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                
-                Text("Ask me anything. I'll guide you\nto the answer, not give it to you.")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                
-                Spacer()
-                
-                HStack {
-                    TextField("What do you want to learn?", text: $messageText)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    
-                    Button(action: {
-                        // Will send message later
-                    }) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 30))
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(spacing: 6) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.system(size: 44))
                             .foregroundColor(.blue)
+                        
+                        Text("EducationAI")
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(.blue)
+                        
+                        Text("Learn smarter, not harder")
+                            .font(.caption)
+                            .foregroundColor(.gray)
                     }
+                    .padding(.top, 45)
+                   
+                    // Calendar Widget
+                    Button(action: {
+                        // We'll wire this up to switch tabs
+                    }) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Image(systemName: "calendar")
+                                    .foregroundColor(.blue)
+                                Text("Calendar")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.gray)
+                                    .font(.caption)
+                            }
+                            
+                            // Mini calendar grid
+                            let days = ["S", "M", "T", "W", "T", "F", "S"]
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                                ForEach(days, id: \.self) { day in
+                                    Text(day)
+                                        .font(.caption2)
+                                        .foregroundColor(.gray)
+                                }
+                                ForEach(1...31, id: \.self) { day in
+                                    Text("\(day)")
+                                        .font(.caption)
+                                        .frame(width: 28, height: 28)
+                                        .background(
+                                            day == 17 ? Color.blue : Color.clear
+                                        )
+                                        .foregroundColor(day == 17 ? .white : .primary)
+                                        .cornerRadius(14)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(16)
+                    }
+                    .padding(.horizontal, 25)
+                    
+                    // Recent Quizzes Widget
+                    Button(action: {
+                        // We'll wire this up to switch tabs
+                    }) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Image(systemName: "questionmark.circle.fill")
+                                    .foregroundColor(.blue)
+                                Text("Recent Quizzes")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.gray)
+                                    .font(.caption)
+                            }
+                            
+                            VStack(spacing: 8) {
+                                QuizRow(subject: "Chemistry", date: "Mar 15", score: "92%")
+                                QuizRow(subject: "Math", date: "Mar 12", score: "78%")
+                                QuizRow(subject: "History", date: "Mar 10", score: "43%")
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(16)
+                    }
+                    .padding(.horizontal, 25)
+                    .padding(.bottom, 10)
+                    
+                    // Start Learning Button
+                    Button(action: {
+                        // Navigate to chat
+                    }) {
+                        Text("Start Learning")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 30)
+                    .padding(.top, 5)
+                    
                 }
-                .padding()
             }
-            .navigationTitle("Chat")
+            .navigationTitle("Home")
+        }
+    }
+
+
+struct QuizRow: View {
+    let subject: String
+    let date: String
+    let score: String
+    
+    var scoreColor: Color {
+        let number = Int(score.replacingOccurrences(of: "%", with: "")) ?? 0
+        if number >= 80 {
+            return .green
+        } else if number >= 50 {
+            return .orange
+        } else {
+            return .red
+        }
+    }
+    
+    var body: some View {
+        HStack {
+            Text(subject)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+            Spacer()
+            Text(date)
+                .font(.caption)
+                .foregroundColor(.gray)
+            Text(score)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(scoreColor)
         }
     }
 }
@@ -259,7 +327,48 @@ struct Assignment: Identifiable {
     var isCompleted: Bool = false
 }
     
-
+struct ChatView: View {
+    @State private var messageText = ""
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                Spacer()
+                
+                Image(systemName: "message.fill")
+                    .font(.system(size: 50))
+                    .foregroundColor(.blue)
+                    .padding(.bottom, 10)
+                
+                Text("AI Tutor")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text("Ask me anything — I'll guide you\nto the answer, not give it to you.")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                
+                Spacer()
+                
+                HStack {
+                    TextField("What do you want to learn?", text: $messageText)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    
+                    Button(action: {
+                    }) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundColor(.blue)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Chat")
+        }
+    }
+}
 
 #Preview {
     ContentView()
