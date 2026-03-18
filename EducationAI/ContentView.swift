@@ -3,33 +3,39 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         TabView {
-            HomeView()
-                .tabItem {
-                    Image(systemName: "house.fill")
-                    Text("Home")
-                }
-            
-            ChatView()
-                .tabItem {
-                    Image(systemName: "message.fill")
-                    Text("Chat")
-                }
-            
-           QuizView()
+                    HomeView()
+                        .tabItem {
+                            Image(systemName: "house.fill")
+                            Text("Home")
+                        }
+                    
+                    QuizView()
                 .tabItem {
                     Image(systemName: "questionmark.circle.fill")
                     Text("Quiz")
                 }
             
-           SettingsView()
-                .tabItem {
-                    Image(systemName: "gearshape.fill")
-                    Text("Settings")
+                    ChatView()
+                        .tabItem {
+                            Image(systemName: "message.fill")
+                            Text("Chat")
+                        }
+                    
+                CalendarTabView()
+                        .tabItem {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                            Text("Calendar")
+                        }
+                    
+                    SettingsView()
+                        .tabItem {
+                            Image(systemName: "gearshape.fill")
+                            Text("Settings")
+                        }
                 }
+                .tint(.blue)
+            }
         }
-        .tint(.blue)
-    }
-}
 
 struct HomeView: View {
     var body: some View {
@@ -86,7 +92,8 @@ struct ChatView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                 
-                Text("Ask me anything — I'll guide you\nto the answer, not give it to you.")
+                
+                Text("Ask me anything. I'll guide you\nto the answer, not give it to you.")
                     .font(.subheadline)
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
@@ -181,6 +188,78 @@ struct SettingsView: View {
         }
     }
 }
+
+struct CalendarTabView: View {
+    @State private var assignments: [Assignment] = [
+        Assignment(title: "Chemistry Test", date: "March 20", type: "Test"),
+        Assignment(title: "English Essay", date: "March 22", type: "Project"),
+        Assignment(title: "Math Homework Ch.7", date: "March 18", type: "Homework")
+    ]
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                // Month Header
+                HStack {
+                    Text("March 2026")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                
+                // Assignment List
+                List {
+                    ForEach(assignments.indices, id: \.self) { index in
+                        HStack {
+                            Button(action: {
+                                assignments[index].isCompleted.toggle()
+                            }) {
+                                Image(systemName: assignments[index].isCompleted ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(assignments[index].isCompleted ? .green : .gray)
+                                    .font(.system(size: 22))
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(assignments[index].title)
+                                    .strikethrough(assignments[index].isCompleted)
+                                    .foregroundColor(assignments[index].isCompleted ? .gray : .primary)
+                                
+                                HStack {
+                                    Text(assignments[index].type)
+                                        .font(.caption)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 2)
+                                        .background(Color.blue.opacity(0.1))
+                                        .cornerRadius(4)
+                                    
+                                    Text(assignments[index].date)
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .listStyle(PlainListStyle())
+            }
+            .navigationTitle("Calendar")
+        }
+    }
+}
+
+struct Assignment: Identifiable {
+    let id = UUID()
+    var title: String
+    var date: String
+    var type: String
+    var isCompleted: Bool = false
+}
+    
+
 
 #Preview {
     ContentView()
