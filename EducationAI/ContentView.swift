@@ -329,43 +329,103 @@ struct Assignment: Identifiable {
     
 struct ChatView: View {
     @State private var messageText = ""
+    @State private var messages: [ChatMessage] = [
+        ChatMessage(text: "Hi! I'm your AI tutor. I won't give you answers — but I'll help you think through any problem. What would you like to learn?", isUser: false)
+    ]
     
     var body: some View {
         NavigationView {
-            VStack {
-                Spacer()
+            VStack(spacing: 0) {
+                // Messages
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(messages) { message in
+                                MessageBubble(message: message)
+                            }
+                        }
+                        .padding()
+                    }
+                    .onChange(of: messages.count) {
+                        if let last = messages.last {
+                            withAnimation {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
                 
-                Image(systemName: "message.fill")
-                    .font(.system(size: 50))
-                    .foregroundColor(.blue)
-                    .padding(.bottom, 10)
-                
-                Text("AI Tutor")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Text("Ask me anything — I'll guide you\nto the answer, not give it to you.")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                
-                Spacer()
-                
-                HStack {
-                    TextField("What do you want to learn?", text: $messageText)
+                // Input bar
+                HStack(spacing: 10) {
+                    TextField("Ask me anything...", text: $messageText)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                     
                     Button(action: {
+                        sendMessage()
                     }) {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundColor(.blue)
+                            .font(.system(size: 32))
+                            .foregroundColor(messageText.isEmpty ? .gray : .blue)
                     }
+                    .disabled(messageText.isEmpty)
                 }
                 .padding()
+                .background(Color(.systemBackground))
             }
             .navigationTitle("Chat")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+    
+    func sendMessage() {
+            let userMessage = ChatMessage(text: messageText, isUser: true)
+            messages.append(userMessage)
+            let userText = messageText
+            messageText = ""
+            
+            // Build message history for API
+            var apiMessages: [(role: String, content: String)] = []
+            for msg in messages {
+                apiMessages.append((role: msg.isUser ? "user" : "assistant", content: msg.text))
+            }
+            
+            // Call real Claude API
+            Task {
+                do {
+                    let response = try await ClaudeService.shared.sendMessage(messages: apiMessages)
+                    let aiMessage = ChatMessage(text: response, isUser: false)
+                    messages.append(aiMessage)
+                } catch {
+                    let errorMessage = ChatMessage(text: "Something went wrong. Check your connection and try again.", isUser: false)
+                    messages.append(errorMessage)
+                }
+            }
+        }
+    
+  
+}
+
+struct ChatMessage: Identifiable, Equatable {
+    let id = UUID()
+    let text: String
+    let isUser: Bool
+}
+
+struct MessageBubble: View {
+    let message: ChatMessage
+    
+    var body: some View {
+        HStack {
+            if message.isUser { Spacer() }
+            
+            Text(message.text)
+                .padding(12)
+                .background(message.isUser ? Color.blue : Color(.systemGray5))
+                .foregroundColor(message.isUser ? .white : .primary)
+                .cornerRadius(16)
+                .frame(maxWidth: 280, alignment: message.isUser ? .trailing : .leading)
+            
+            if !message.isUser { Spacer() }
         }
     }
 }
