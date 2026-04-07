@@ -21,12 +21,19 @@ class ClaudeService {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, _) = try await URLSession.shared.data(for: request)
-        
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let content = json?["content"] as? [[String: Any]]
-        let text = content?.first?["text"] as? String
-        
-        return text ?? "I'm having trouble thinking right now. Try again?"
+        let (data, response) = try await URLSession.shared.data(for: request)
+                
+                if let httpResponse = response as? HTTPURLResponse {
+                    print("Status code: \(httpResponse.statusCode)")
+                }
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("Response: \(responseString)")
+                }
+                
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let content = json?["content"] as? [[String: Any]]
+                let text = content?.first?["text"] as? String
+                
+                return text ?? "I'm having trouble thinking right now. Try again?"
     }
 }

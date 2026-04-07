@@ -189,48 +189,170 @@ struct QuizRow: View {
 }
 
 struct QuizView: View {
+    @StateObject private var engine = QuizEngine()
+    @State private var selectedTopic: String? = nil
+    
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                Spacer()
-                
-                Image(systemName: "questionmark.circle.fill")
-                    .font(.system(size: 50))
-                    .foregroundColor(.blue)
-                    .padding(.bottom, 10)
-                
-                Text("Quiz Mode")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Text("Test your knowledge with\nadaptive quizzes that learn from you.")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                
-                Spacer()
-                
-                Button(action: {
-                    // Will start quiz later
-                }) {
-                    Text("Start Quiz")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(12)
+            if engine.quizComplete {
+                // Results screen
+                VStack(spacing: 20) {
+                    Spacer()
+                    
+                    Image(systemName: engine.scorePercentage >= 80 ? "star.fill" : engine.scorePercentage >= 50 ? "hand.thumbsup.fill" : "book.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(engine.scorePercentage >= 80 ? .green : engine.scorePercentage >= 50 ? .orange : .red)
+                    
+                    Text("Quiz Complete!")
+                        .font(.title)
+                        .fontWeight(.bold)
+                    
+                    Text("\(engine.score)/\(engine.questions.count)")
+                        .font(.system(size: 48, weight: .bold))
+                        .foregroundColor(.blue)
+                    
+                    Text("\(engine.scorePercentage)%")
+                        .font(.title2)
+                        .foregroundColor(engine.scorePercentage >= 80 ? .green : engine.scorePercentage >= 50 ? .orange : .red)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        selectedTopic = nil
+                    }) {
+                        Text("Try Another Quiz")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 30)
+                    
+                    Spacer()
                 }
-                .padding(.horizontal, 30)
+                .navigationTitle("Results")
                 
-                Spacer()
+            } else if let question = engine.currentQuestion {
+                // Question screen
+                VStack(spacing: 20) {
+                    Text("Question \(engine.currentIndex + 1) of \(engine.questions.count)")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    
+                    Text(question.text)
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    VStack(spacing: 12) {
+                        ForEach(0..<question.options.count, id: \.self) { index in
+                            Button(action: {
+                                if engine.selectedAnswer == nil {
+                                    engine.selectAnswer(index)
+                                }
+                            }) {
+                                HStack {
+                                    Text(question.options[index])
+                                        .foregroundColor(buttonTextColor(for: index))
+                                    Spacer()
+                                    if engine.showExplanation {
+                                        if index == question.correctIndex {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                        } else if index == engine.selectedAnswer {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.red)
+                                        }
+                                    }
+                                }
+                                .padding()
+                                .background(buttonBackground(for: index, correct: question.correctIndex))
+                                .cornerRadius(10)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    
+                    if engine.showExplanation {
+                        Text(question.explanation)
+                            .font(.callout)
+                            .foregroundColor(.gray)
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
+                            .padding(.horizontal)
+                        
+                        Button(action: {
+                            engine.nextQuestion()
+                        }) {
+                            Text("Next Question")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 30)
+                    }
+                    
+                    Spacer()
+                }
+                .navigationTitle("Quiz")
+                
+            } else {
+                // Topic selection screen
+                VStack(spacing: 20) {
+                    Spacer()
+                    
+                    Image(systemName: "questionmark.circle.fill")
+                        .font(.system(size: 50))
+                        .foregroundColor(.blue)
+                    
+                    Text("Choose a Topic")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    ForEach(["Science", "Math", "History"], id: \.self) { topic in
+                        Button(action: {
+                            selectedTopic = topic
+                            engine.startQuiz(topic: topic)
+                        }) {
+                            Text(topic)
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 30)
+                    }
+                    
+                    Spacer()
+                }
+                .navigationTitle("Quiz")
             }
-            .navigationTitle("Quiz")
         }
     }
+    
+    func buttonTextColor(for index: Int) -> Color {
+        guard engine.showExplanation else { return .primary }
+        if index == engine.currentQuestion?.correctIndex { return .green }
+        if index == engine.selectedAnswer { return .red }
+        return .gray
+    }
+    
+    func buttonBackground(for index: Int, correct: Int) -> Color {
+        guard engine.showExplanation else { return Color(.systemGray6) }
+        if index == correct { return Color.green.opacity(0.15) }
+        if index == engine.selectedAnswer { return Color.red.opacity(0.15) }
+        return Color(.systemGray6)
+    }
 }
-
 struct SettingsView: View {
     var body: some View {
         NavigationView {
