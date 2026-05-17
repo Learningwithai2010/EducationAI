@@ -111,6 +111,7 @@ struct Assignment: Identifiable, Codable, Equatable {
 
 struct ContentView: View {
     @State private var selectedTab = 0
+    @AppStorage("darkModeEnabled") private var darkModeEnabled = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -150,6 +151,7 @@ struct ContentView: View {
                 .tag(4)
         }
         .tint(.blue)
+        .preferredColorScheme(darkModeEnabled ? .dark : .light)
     }
 }
 
@@ -910,14 +912,34 @@ struct CalendarTabView: View {
 struct SettingsView: View {
     @EnvironmentObject private var quizEngine: QuizEngine
     @EnvironmentObject private var chatVM: ChatViewModel
+    @AppStorage("userName") private var userName = ""
+    @AppStorage("userGrade") private var userGrade = "Freshman"
+    @AppStorage("darkModeEnabled") private var darkModeEnabled = false
+    @AppStorage("notificationsEnabled") private var notificationsEnabled = false
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @State private var apiKey = APIConfig.claudeAPIKey
     @State private var keySaved = false
-    @State private var showClearChatAlert = false
     @State private var showClearQuizAlert = false
+    @State private var showClearChatAlert = false
+    @State private var showResetOnboardingAlert = false
+
+    private let grades = ["Freshman", "Sophomore", "Junior", "Senior"]
 
     var body: some View {
         NavigationView {
             Form {
+                Section("Profile") {
+                    TextField("Your Name", text: $userName)
+                    Picker("Grade", selection: $userGrade) {
+                        ForEach(grades, id: \.self) { Text($0) }
+                    }
+                }
+
+                Section("Preferences") {
+                    Toggle("Dark Mode", isOn: $darkModeEnabled)
+                    Toggle("Notifications", isOn: $notificationsEnabled)
+                }
+
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         SecureField("sk-ant-...", text: $apiKey)
@@ -945,6 +967,14 @@ struct SettingsView: View {
                 }
 
                 Section("Data") {
+                    Button("Clear Quiz History", role: .destructive) {
+                        showClearQuizAlert = true
+                    }
+                    .alert("Clear Quiz History?", isPresented: $showClearQuizAlert) {
+                        Button("Clear", role: .destructive) { quizEngine.clearHistory() }
+                        Button("Cancel", role: .cancel) {}
+                    }
+
                     Button("Clear Chat History", role: .destructive) {
                         showClearChatAlert = true
                     }
@@ -953,11 +983,12 @@ struct SettingsView: View {
                         Button("Cancel", role: .cancel) {}
                     }
 
-                    Button("Clear Quiz History", role: .destructive) {
-                        showClearQuizAlert = true
+                    Button("Reset Onboarding") {
+                        showResetOnboardingAlert = true
                     }
-                    .alert("Clear Quiz History?", isPresented: $showClearQuizAlert) {
-                        Button("Clear", role: .destructive) { quizEngine.clearHistory() }
+                    .foregroundColor(.blue)
+                    .alert("Reset Onboarding?", isPresented: $showResetOnboardingAlert) {
+                        Button("Reset", role: .destructive) { hasCompletedOnboarding = false }
                         Button("Cancel", role: .cancel) {}
                     }
                 }
@@ -966,7 +997,17 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0").foregroundColor(.secondary)
+                        Text("1.0.0").foregroundColor(.secondary)
+                    }
+                    HStack {
+                        Text("Made by")
+                        Spacer()
+                        Text("Maxi Baumgart").foregroundColor(.secondary)
+                    }
+                    HStack {
+                        Text("View on GitHub")
+                        Spacer()
+                        Image(systemName: "safari").foregroundColor(.blue)
                     }
                     HStack {
                         Text("AI Model")
