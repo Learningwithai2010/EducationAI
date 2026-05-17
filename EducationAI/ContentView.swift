@@ -84,16 +84,26 @@ class ChatViewModel: ObservableObject {
 struct Assignment: Identifiable, Codable, Equatable {
     let id: UUID
     var title: String
-    var date: String
+    var dueDate: Date
     var type: String
     var isCompleted: Bool
 
-    init(title: String, date: String, type: String, isCompleted: Bool = false) {
+    init(title: String, dueDate: Date, type: String, isCompleted: Bool = false) {
         self.id = UUID()
         self.title = title
-        self.date = date
+        self.dueDate = dueDate
         self.type = type
         self.isCompleted = isCompleted
+    }
+
+    var displayDate: String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f.string(from: dueDate)
+    }
+
+    var isOverdue: Bool {
+        !isCompleted && dueDate < Calendar.current.startOfDay(for: Date())
     }
 }
 
@@ -735,6 +745,12 @@ struct CalendarTabView: View {
         return f.string(from: Date())
     }
 
+    private var sortedAssignments: [Assignment] {
+        let active = assignments.filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate }
+        let done = assignments.filter { $0.isCompleted }.sorted { $0.dueDate < $1.dueDate }
+        return active + done
+    }
+
     var body: some View {
         NavigationView {
             VStack {
@@ -754,33 +770,41 @@ struct CalendarTabView: View {
                     Spacer()
                 } else {
                     List {
-                        ForEach(assignments.indices, id: \.self) { index in
+                        ForEach(sortedAssignments) { assignment in
                             HStack {
                                 Button(action: {
-                                    assignments[index].isCompleted.toggle()
-                                    saveAssignments()
+                                    if let i = assignments.firstIndex(where: { $0.id == assignment.id }) {
+                                        assignments[i].isCompleted.toggle()
+                                        saveAssignments()
+                                    }
                                 }) {
-                                    Image(systemName: assignments[index].isCompleted ? "checkmark.circle.fill" : "circle")
-                                        .foregroundColor(assignments[index].isCompleted ? .green : .gray)
+                                    Image(systemName: assignment.isCompleted ? "checkmark.circle.fill" : "circle")
+                                        .foregroundColor(assignment.isCompleted ? .green : .gray)
                                         .font(.system(size: 22))
                                 }
                                 .buttonStyle(.plain)
 
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(assignments[index].title)
-                                        .strikethrough(assignments[index].isCompleted)
-                                        .foregroundColor(assignments[index].isCompleted ? .gray : .primary)
+                                    Text(assignment.title)
+                                        .strikethrough(assignment.isCompleted)
+                                        .foregroundColor(assignment.isCompleted ? .gray : .primary)
 
                                     HStack {
-                                        Text(assignments[index].type)
+                                        Text(assignment.type)
                                             .font(.caption)
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 2)
                                             .background(Color.blue.opacity(0.1))
                                             .cornerRadius(4)
-                                        Text(assignments[index].date)
+                                        Text(assignment.displayDate)
                                             .font(.caption)
-                                            .foregroundColor(.gray)
+                                            .foregroundColor(assignment.isOverdue ? .red : .gray)
+                                        if assignment.isOverdue {
+                                            Text("Overdue")
+                                                .font(.caption2)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(.red)
+                                        }
                                     }
                                 }
 
@@ -789,7 +813,8 @@ struct CalendarTabView: View {
                             .padding(.vertical, 4)
                         }
                         .onDelete { indexSet in
-                            assignments.remove(atOffsets: indexSet)
+                            let toDelete = indexSet.map { sortedAssignments[$0].id }
+                            assignments.removeAll { toDelete.contains($0.id) }
                             saveAssignments()
                         }
                     }
@@ -833,11 +858,9 @@ struct CalendarTabView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        let formatter = DateFormatter()
-                        formatter.dateStyle = .medium
                         let assignment = Assignment(
                             title: newTitle.trimmingCharacters(in: .whitespaces),
-                            date: formatter.string(from: newDate),
+                            dueDate: newDate,
                             type: newType
                         )
                         assignments.append(assignment)
@@ -862,10 +885,14 @@ struct CalendarTabView: View {
            let saved = try? JSONDecoder().decode([Assignment].self, from: data) {
             assignments = saved
         } else {
+            let today = Date()
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+            let threeDays = Calendar.current.date(byAdding: .day, value: 3, to: today)!
+            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
             assignments = [
-                Assignment(title: "Chemistry Test", date: "March 20, 2026", type: "Test"),
-                Assignment(title: "English Essay", date: "March 22, 2026", type: "Project"),
-                Assignment(title: "Math Homework Ch.7", date: "March 18, 2026", type: "Homework")
+                Assignment(title: "Chemistry Test", dueDate: tomorrow, type: "Test"),
+                Assignment(title: "English Essay", dueDate: threeDays, type: "Project"),
+                Assignment(title: "Math Homework Ch.7", dueDate: yesterday, type: "Homework")
             ]
             saveAssignments()
         }
