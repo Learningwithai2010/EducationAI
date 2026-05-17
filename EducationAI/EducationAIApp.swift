@@ -2,12 +2,16 @@ import SwiftUI
 
 @main
 struct EducationAIApp: App {
-    @State private var hasCompletedOnboarding = false
-    
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @StateObject private var quizEngine = QuizEngine()
+    @StateObject private var chatVM = ChatViewModel()
+
     var body: some Scene {
         WindowGroup {
             if hasCompletedOnboarding {
                 ContentView()
+                    .environmentObject(quizEngine)
+                    .environmentObject(chatVM)
             } else {
                 OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
             }
