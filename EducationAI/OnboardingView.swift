@@ -69,6 +69,15 @@ struct OnboardingView: View {
                 .padding(.bottom, 30)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            Button("Skip") {
+                hasCompletedOnboarding = true
+            }
+            .foregroundColor(.blue)
+            .fontWeight(.medium)
+            .padding(.top, 55)
+            .padding(.trailing, 20)
+        }
     }
 }
 
