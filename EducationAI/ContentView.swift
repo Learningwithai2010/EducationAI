@@ -7,11 +7,19 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     let id: UUID
     let text: String
     let isUser: Bool
+    let timestamp: Date
 
     init(text: String, isUser: Bool) {
         self.id = UUID()
         self.text = text
         self.isUser = isUser
+        self.timestamp = Date()
+    }
+
+    var timeString: String {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        return f.string(from: timestamp)
     }
 }
 
@@ -22,7 +30,7 @@ class ChatViewModel: ObservableObject {
 
     private let storageKey = "chat_messages"
     private let welcomeMessage = ChatMessage(
-        text: "Hi! I'm your AI tutor. I won't give you answers — but I'll help you think through any problem. What would you like to learn?",
+        text: "Welcome to EducationAI! I'm your AI tutor. I won't give you direct answers — but I'll guide you to think through any problem. What would you like to learn?",
         isUser: false
     )
 
@@ -48,8 +56,14 @@ class ChatViewModel: ObservableObject {
         do {
             let response = try await ClaudeService.shared.sendMessage(messages: apiMessages)
             messages.append(ChatMessage(text: response, isUser: false))
+        } catch let claudeError as ClaudeError {
+            if case .missingAPIKey = claudeError {
+                messages.append(ChatMessage(text: claudeError.errorDescription ?? "No API key set.", isUser: false))
+            } else {
+                messages.append(ChatMessage(text: "I need an internet connection to help you. Check your connection and try again.", isUser: false))
+            }
         } catch {
-            messages.append(ChatMessage(text: error.localizedDescription, isUser: false))
+            messages.append(ChatMessage(text: "I need an internet connection to help you. Check your connection and try again.", isUser: false))
         }
 
         isTyping = false
@@ -763,6 +777,13 @@ struct ChatView: View {
             }
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("New Chat") {
+                        chatVM.clearMessages()
+                    }
+                }
+            }
         }
     }
 }
@@ -773,12 +794,18 @@ struct MessageBubble: View {
     var body: some View {
         HStack {
             if message.isUser { Spacer() }
-            Text(message.text)
-                .padding(12)
-                .background(message.isUser ? Color.blue : Color(.systemGray5))
-                .foregroundColor(message.isUser ? .white : .primary)
-                .cornerRadius(16)
-                .frame(maxWidth: 280, alignment: message.isUser ? .trailing : .leading)
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 3) {
+                Text(message.text)
+                    .padding(12)
+                    .background(message.isUser ? Color.blue : Color(.systemGray5))
+                    .foregroundColor(message.isUser ? .white : .primary)
+                    .cornerRadius(16)
+                    .frame(maxWidth: 280, alignment: message.isUser ? .trailing : .leading)
+                Text(message.timeString)
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+                    .padding(.horizontal, 4)
+            }
             if !message.isUser { Spacer() }
         }
     }
