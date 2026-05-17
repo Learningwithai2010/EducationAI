@@ -1,6 +1,13 @@
 import SwiftUI
 import Combine
 
+struct QuestionResult {
+    let questionText: String
+    let selectedIndex: Int
+    let correctIndex: Int
+    var wasCorrect: Bool { selectedIndex == correctIndex }
+}
+
 struct Question: Identifiable {
     let id = UUID()
     let text: String
@@ -47,6 +54,7 @@ class QuizEngine: ObservableObject {
     @Published var isGenerating = false
     @Published var errorMessage: String? = nil
     @Published var quizHistory: [QuizResult] = []
+    @Published var questionResults: [QuestionResult] = []
 
     private var currentTopic = ""
 
@@ -88,6 +96,7 @@ class QuizEngine: ObservableObject {
         showExplanation = false
         quizComplete = false
         questions = []
+        questionResults = []
 
         do {
             let generated = try await ClaudeService.shared.generateQuizQuestions(topic: topic)
@@ -114,6 +123,7 @@ class QuizEngine: ObservableObject {
         showExplanation = false
         quizComplete = false
         questions = []
+        questionResults = []
 
         do {
             questions = try await ClaudeService.shared.generateQuizFromChatHistory(messages: chatMessages)
@@ -132,6 +142,7 @@ class QuizEngine: ObservableObject {
         quizComplete = false
         errorMessage = nil
         isGenerating = false
+        questionResults = []
         self.questions = questions
     }
 
@@ -143,8 +154,13 @@ class QuizEngine: ObservableObject {
     func selectAnswer(_ index: Int) {
         selectedAnswer = index
         showExplanation = true
-        if index == currentQuestion?.correctIndex {
-            score += 1
+        if let q = currentQuestion {
+            questionResults.append(QuestionResult(
+                questionText: q.text,
+                selectedIndex: index,
+                correctIndex: q.correctIndex
+            ))
+            if index == q.correctIndex { score += 1 }
         }
     }
 
@@ -168,6 +184,7 @@ class QuizEngine: ObservableObject {
         quizComplete = false
         errorMessage = nil
         isGenerating = false
+        questionResults = []
     }
 
     var scorePercentage: Int {

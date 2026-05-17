@@ -292,6 +292,7 @@ struct QuizView: View {
     @EnvironmentObject private var chatVM: ChatViewModel
     @State private var customTopic = ""
     @State private var showManualCreator = false
+    @State private var pendingTopic: String? = nil
 
     private let presetTopics = ["Science", "Math", "History"]
 
@@ -310,6 +311,8 @@ struct QuizView: View {
                     resultsView
                 } else if engine.currentQuestion != nil {
                     questionView
+                } else if let topic = pendingTopic {
+                    confirmationView(topic: topic)
                 } else {
                     topicSelectionView
                 }
@@ -377,7 +380,7 @@ struct QuizView: View {
 
                     ForEach(presetTopics, id: \.self) { topic in
                         Button(action: {
-                            Task { await engine.startAIQuiz(topic: topic) }
+                            pendingTopic = topic
                         }) {
                             Text(topic)
                                 .font(.headline)
@@ -398,7 +401,7 @@ struct QuizView: View {
                             let topic = customTopic.trimmingCharacters(in: .whitespaces)
                             guard !topic.isEmpty else { return }
                             customTopic = ""
-                            Task { await engine.startAIQuiz(topic: topic) }
+                            pendingTopic = topic
                         }) {
                             Image(systemName: "arrow.up.circle.fill")
                                 .font(.system(size: 32))
@@ -454,6 +457,39 @@ struct QuizView: View {
         }
     }
 
+    // MARK: Confirmation
+
+    private func confirmationView(topic: String) -> some View {
+        VStack(spacing: 24) {
+            Spacer()
+            Image(systemName: "questionmark.circle.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.blue)
+            Text("Ready to Quiz?")
+                .font(.title2)
+                .fontWeight(.bold)
+            Text("5 questions on \(topic)")
+                .font(.subheadline)
+                .foregroundColor(.gray)
+            Button(action: {
+                pendingTopic = nil
+                Task { await engine.startAIQuiz(topic: topic) }
+            }) {
+                Text("Start Quiz")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .cornerRadius(12)
+            }
+            .padding(.horizontal, 30)
+            Button("Back") { pendingTopic = nil }
+                .foregroundColor(.blue)
+            Spacer()
+        }
+    }
+
     // MARK: Generating
 
     private var generatingView: some View {
@@ -504,6 +540,11 @@ struct QuizView: View {
     private var questionView: some View {
         if let question = engine.currentQuestion {
             VStack(spacing: 20) {
+                ProgressView(value: Double(engine.currentIndex + 1), total: Double(engine.questions.count))
+                    .tint(.blue)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
                 Text("Question \(engine.currentIndex + 1) of \(engine.questions.count)")
                     .font(.caption)
                     .foregroundColor(.gray)
@@ -536,6 +577,10 @@ struct QuizView: View {
                             .padding()
                             .background(answerBackground(index: index, question: question))
                             .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(answerBorderColor(index: index, question: question), lineWidth: 1)
+                            )
                         }
                     }
                 }
@@ -568,27 +613,56 @@ struct QuizView: View {
     // MARK: Results
 
     private var resultsView: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: engine.scorePercentage >= 80 ? "star.fill" : engine.scorePercentage >= 50 ? "hand.thumbsup.fill" : "book.fill")
-                .font(.system(size: 60))
-                .foregroundColor(engine.scorePercentage >= 80 ? .green : engine.scorePercentage >= 50 ? .orange : .red)
+        ScrollView {
+            VStack(spacing: 20) {
+                Spacer().frame(height: 10)
 
-            Text("Quiz Complete!")
-                .font(.title)
-                .fontWeight(.bold)
+                Image(systemName: engine.scorePercentage >= 80 ? "star.fill" : engine.scorePercentage >= 50 ? "hand.thumbsup.fill" : "book.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(engine.scorePercentage >= 80 ? .green : engine.scorePercentage >= 50 ? .orange : .red)
 
-            Text("\(engine.score)/\(engine.questions.count)")
-                .font(.system(size: 48, weight: .bold))
-                .foregroundColor(.blue)
+                Text("Quiz Complete!")
+                    .font(.title)
+                    .fontWeight(.bold)
 
-            Text("\(engine.scorePercentage)%")
-                .font(.title2)
-                .foregroundColor(engine.scorePercentage >= 80 ? .green : engine.scorePercentage >= 50 ? .orange : .red)
+                Text("\(engine.score)/\(engine.questions.count)")
+                    .font(.system(size: 48, weight: .bold))
+                    .foregroundColor(.blue)
 
-            Spacer()
+                Text("\(engine.scorePercentage)%")
+                    .font(.title2)
+                    .foregroundColor(engine.scorePercentage >= 80 ? .green : engine.scorePercentage >= 50 ? .orange : .red)
 
-            Button("Try Another Quiz") { engine.resetToTopicSelection() }
+                if !engine.questionResults.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Question Summary")
+                            .font(.headline)
+                            .padding(.horizontal)
+                        ForEach(engine.questionResults.indices, id: \.self) { i in
+                            let r = engine.questionResults[i]
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: r.wasCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .foregroundColor(r.wasCorrect ? .green : .red)
+                                    .font(.system(size: 16))
+                                Text(r.questionText)
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                    .padding(.vertical, 10)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(16)
+                    .padding(.horizontal)
+                }
+
+                Button("Try Another Quiz") {
+                    pendingTopic = nil
+                    engine.resetToTopicSelection()
+                }
                 .font(.headline)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
@@ -597,7 +671,8 @@ struct QuizView: View {
                 .cornerRadius(12)
                 .padding(.horizontal, 30)
 
-            Spacer()
+                Spacer().frame(height: 20)
+            }
         }
     }
 
@@ -613,6 +688,13 @@ struct QuizView: View {
         if index == question.correctIndex { return Color.green.opacity(0.15) }
         if index == engine.selectedAnswer { return Color.red.opacity(0.15) }
         return Color(.systemGray6)
+    }
+
+    private func answerBorderColor(index: Int, question: Question) -> Color {
+        guard engine.showExplanation else { return Color.gray.opacity(0.3) }
+        if index == question.correctIndex { return Color.green.opacity(0.5) }
+        if index == engine.selectedAnswer { return Color.red.opacity(0.5) }
+        return Color.gray.opacity(0.2)
     }
 }
 
