@@ -113,6 +113,26 @@ class QuizEngine: ObservableObject {
         isGenerating = false
     }
 
+    func startQuizFromPDF(text: String) async {
+        currentTopic = "Study Materials"
+        isGenerating = true
+        errorMessage = nil
+        currentIndex = 0
+        score = 0
+        selectedAnswer = nil
+        showExplanation = false
+        quizComplete = false
+        questions = []
+        questionResults = []
+
+        do {
+            questions = try await ClaudeService.shared.generateQuizFromPDF(text: text)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isGenerating = false
+    }
+
     func startQuizFromChatHistory(chatMessages: [(role: String, content: String)]) async {
         currentTopic = "Chat Review"
         isGenerating = true
