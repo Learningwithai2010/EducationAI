@@ -75,23 +75,43 @@ class ClaudeService {
         return text
     }
 
+    // MARK: - Feature 3: Enhanced Socratic tutor with 4D Framework and personalization
+
     func sendMessage(messages: [(role: String, content: String)]) async throws -> String {
         guard APIConfig.hasAPIKey else { throw ClaudeError.missingAPIKey }
 
+        let ud = UserDefaults.standard
+        let name = ud.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "there"
+        let coursesData = ud.data(forKey: "userCourses")
+        let courses = (try? JSONDecoder().decode([String].self, from: coursesData ?? Data())) ?? []
+        let coursesText = courses.isEmpty ? "various subjects" : courses.joined(separator: ", ")
+        let grade = ud.string(forKey: "userGrade") ?? "high school"
+
         let system = """
-        You are an ethical AI tutor inside the EducationAI app. Your job is to help students THINK, not give them answers.
+        You are an AI tutor for \(name), a \(grade) student currently taking: \(coursesText).
+
+        Your approach follows the 4D Framework for ethical AI in education:
+        — Delegation: Guide \(name) on what AI can help with versus what they should do themselves. Protect their independent thinking. Never do the intellectual work for them.
+        — Description: Teach better prompting. When their question is vague or too broad, help them ask it more precisely and specifically.
+        — Discernment: Encourage \(name) to evaluate your responses critically. Say things like "does this match what your teacher covered?" or "what do you think — does this make sense?"
+        — Diligence: Be transparent about AI limitations. Remind \(name) to be honest about AI use when submitting schoolwork.
+
+        Tone: Warm, conversational, like a smart older sibling who genuinely wants you to succeed — not a lecturer. Be encouraging, curious, and real.
+
         Rules:
-        1) Never give direct answers to homework or test questions.
-        2) Always ask what the student already knows first.
-        3) Break problems into steps and guide them.
-        4) If they ask you to just give the answer, refuse kindly and redirect them to think.
-        5) Keep responses short and conversational.
-        6) Encourage them when they make progress.
+        1. Never give direct answers to homework or test questions. Guide \(name) to discover answers themselves.
+        2. Always ask what they already know before diving in.
+        3. Break complex problems into manageable steps.
+        4. If \(name) asks you to just give the answer: "I get the temptation! But you'll remember it so much better if we work through it together. Let's start with what you know..."
+        5. Keep responses concise and conversational — this is a chat, not an essay.
+        6. Celebrate progress with genuine warmth when \(name) gets something right.
         """
 
-        let request = try requestWithHistory(maxTokens: 400, system: system, messages: messages)
+        let request = try requestWithHistory(maxTokens: 300, system: system, messages: messages)
         return try await fetchResponseText(from: request)
     }
+
+    // MARK: - Quiz generation by topic
 
     func generateQuizQuestions(topic: String) async throws -> [Question] {
         guard APIConfig.hasAPIKey else { throw ClaudeError.missingAPIKey }
@@ -118,6 +138,8 @@ class ClaudeService {
         guard !questions.isEmpty else { throw ClaudeError.noQuestionsGenerated }
         return questions
     }
+
+    // MARK: - Quiz generation from chat history
 
     func generateQuizFromChatHistory(messages: [(role: String, content: String)]) async throws -> [Question] {
         guard APIConfig.hasAPIKey else { throw ClaudeError.missingAPIKey }
@@ -150,10 +172,44 @@ class ClaudeService {
         return questions
     }
 
+    // MARK: - Feature 4: Quiz generation from PDF text
+
+    func generateQuizFromPDF(text: String) async throws -> [Question] {
+        guard APIConfig.hasAPIKey else { throw ClaudeError.missingAPIKey }
+
+        let trimmedText = String(text.prefix(6000))
+
+        let prompt = """
+        Below is text extracted from a student's study material. Generate exactly 5 multiple choice questions that test understanding of the key concepts in this material.
+
+        Study material:
+        \(trimmedText)
+
+        Return ONLY a valid JSON array — no markdown, no explanation, no other text.
+        Each object must have exactly these fields:
+        - "text": the question string
+        - "options": array of exactly 4 answer strings
+        - "correctIndex": integer 0-3 indicating the correct answer
+        - "explanation": one sentence explaining the correct answer
+        """
+
+        let request = try baseRequest(
+            maxTokens: 1500,
+            system: "You are a quiz generator for students. Respond with only valid JSON, nothing else.",
+            userMessage: prompt
+        )
+
+        let responseText = try await fetchResponseText(from: request)
+        let questions = try parseQuestions(from: responseText)
+        guard !questions.isEmpty else { throw ClaudeError.noQuestionsGenerated }
+        return questions
+    }
+
+    // MARK: - JSON parsing
+
     private func parseQuestions(from text: String) throws -> [Question] {
         var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Strip markdown code fences if present
         if cleaned.hasPrefix("```") {
             let lines = cleaned.components(separatedBy: "\n")
             cleaned = lines.dropFirst().joined(separator: "\n")
