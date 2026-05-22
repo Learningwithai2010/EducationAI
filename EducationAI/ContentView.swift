@@ -1,5 +1,7 @@
 import SwiftUI
 import Combine
+import PDFKit
+import UniformTypeIdentifiers
 
 // MARK: - Chat persistence model
 
@@ -43,7 +45,6 @@ class ChatViewModel: ObservableObject {
         isTyping = true
         saveMessages()
 
-        // Claude requires the first message to be from the user, so skip any leading assistant messages
         var apiMessages: [(role: String, content: String)] = []
         var foundUser = false
         for msg in messages {
@@ -169,11 +170,15 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Home
+// MARK: - Home (Feature 5)
 
 struct HomeView: View {
     @Binding var selectedTab: Int
     @EnvironmentObject private var quizEngine: QuizEngine
+    @AppStorage("userName") private var userName = ""
+
+    @State private var studySessions: [Assignment] = []
+    @State private var showStudyPlanner = false
 
     private var todayDay: Int {
         Calendar.current.component(.day, from: Date())
@@ -188,11 +193,12 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
+                // Personalized greeting
                 VStack(spacing: 6) {
                     Image(systemName: "brain.head.profile")
-                        .font(.system(size: 44))
+                        .font(.system(size: 28))
                         .foregroundColor(.blue)
-                    Text("EducationAI")
+                    Text(userName.isEmpty ? "EducationAI" : "Hi, \(userName)!")
                         .font(.title)
                         .fontWeight(.bold)
                         .foregroundColor(.blue)
@@ -232,6 +238,49 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 25)
 
+                // Study Plan widget (Feature 5)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "calendar.badge.clock").foregroundColor(.purple)
+                        Text("Study Plan").font(.headline).foregroundColor(.primary)
+                        Spacer()
+                    }
+                    if studySessions.isEmpty {
+                        Text("No study sessions planned — create one!")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .padding(.vertical, 4)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(studySessions.prefix(3)) { session in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(session.title)
+                                            .font(.subheadline)
+                                            .foregroundColor(.primary)
+                                            .lineLimit(1)
+                                        Text(session.displayDate)
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    Text("Study")
+                                        .font(.caption)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 2)
+                                        .background(Color.purple.opacity(0.12))
+                                        .foregroundColor(.purple)
+                                        .cornerRadius(4)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(16)
+                .padding(.horizontal, 25)
+
                 // Recent quizzes widget
                 Button(action: { selectedTab = 1 }) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -261,8 +310,9 @@ struct HomeView: View {
                 .padding(.horizontal, 25)
                 .padding(.bottom, 10)
 
-                Button(action: { selectedTab = 2 }) {
-                    Text("Start Learning")
+                // Plan Study Session button
+                Button(action: { showStudyPlanner = true }) {
+                    Text("Plan Study Session")
                         .font(.headline)
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -272,10 +322,161 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 30)
                 .padding(.top, 5)
+                .padding(.bottom, 20)
+            }
+        }
+        .onAppear { loadStudySessions() }
+        .sheet(isPresented: $showStudyPlanner, onDismiss: loadStudySessions) {
+            StudyPlannerSheet()
+        }
+    }
+
+    private func loadStudySessions() {
+        guard let data = UserDefaults.standard.data(forKey: "assignments"),
+              let all = try? JSONDecoder().decode([Assignment].self, from: data) else {
+            studySessions = []
+            return
+        }
+        let today = Calendar.current.startOfDay(for: Date())
+        studySessions = all
+            .filter { $0.type == "Study" && !$0.isCompleted && $0.dueDate >= today }
+            .sorted { $0.dueDate < $1.dueDate }
+    }
+}
+
+// MARK: - Study Planner Sheet (Feature 2)
+
+struct StudyPlannerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var assignmentName = ""
+    @State private var selectedSubject = ""
+    @State private var testDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+    @State private var studyDuration = "1hr"
+
+    private let durations = ["30min", "1hr", "2hr", "3hr"]
+
+    private var savedCourses: [String] {
+        guard let data = UserDefaults.standard.data(forKey: "userCourses"),
+              let courses = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return courses
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Assignment Details") {
+                    TextField("Test or assignment name", text: $assignmentName)
+
+                    if savedCourses.isEmpty {
+                        TextField("Subject", text: $selectedSubject)
+                    } else {
+                        Picker("Subject", selection: $selectedSubject) {
+                            ForEach(savedCourses, id: \.self) { Text($0).tag($0) }
+                        }
+                    }
+                }
+
+                Section("Schedule") {
+                    DatePicker("Test / Due Date", selection: $testDate, in: Date()..., displayedComponents: .date)
+
+                    Picker("Study Time", selection: $studyDuration) {
+                        ForEach(durations, id: \.self) { d in Text(d).tag(d) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section {
+                    Button(action: { createPlan(); dismiss() }) {
+                        Text("Create Study Plan")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                    }
+                    .listRowBackground(
+                        assignmentName.trimmingCharacters(in: .whitespaces).isEmpty ? Color.gray : Color.purple
+                    )
+                    .disabled(assignmentName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .navigationTitle("Plan Study Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .onAppear {
+                if selectedSubject.isEmpty, let first = savedCourses.first {
+                    selectedSubject = first
+                }
             }
         }
     }
+
+    private func createPlan() {
+        let name = assignmentName.trimmingCharacters(in: .whitespaces)
+        let subject = selectedSubject.trimmingCharacters(in: .whitespaces)
+        let subjectLabel = subject.isEmpty ? "General" : subject
+
+        var assignments: [Assignment]
+        if let data = UserDefaults.standard.data(forKey: "assignments"),
+           let saved = try? JSONDecoder().decode([Assignment].self, from: data) {
+            assignments = saved
+        } else {
+            assignments = []
+        }
+
+        let sessions = spreadSessions(name: name, subject: subjectLabel)
+        assignments.append(contentsOf: sessions)
+
+        if let data = try? JSONEncoder().encode(assignments) {
+            UserDefaults.standard.set(data, forKey: "assignments")
+        }
+    }
+
+    private func spreadSessions(name: String, subject: String) -> [Assignment] {
+        let today = Calendar.current.startOfDay(for: Date())
+        let testDay = Calendar.current.startOfDay(for: testDate)
+        let title = "Study: \(name) (\(subject))"
+
+        var available: [Date] = []
+        var d = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
+        while Calendar.current.startOfDay(for: d) < testDay {
+            available.append(d)
+            d = Calendar.current.date(byAdding: .day, value: 1, to: d) ?? d
+        }
+
+        let count: Int
+        switch studyDuration {
+        case "30min": count = 1
+        case "1hr":   count = 2
+        case "2hr":   count = 4
+        case "3hr":   count = 6
+        default:      count = 2
+        }
+
+        guard !available.isEmpty else {
+            return [Assignment(title: title, dueDate: today, type: "Study")]
+        }
+
+        let n = min(count, available.count)
+        if n == 1 {
+            return [Assignment(title: title, dueDate: available[0], type: "Study")]
+        }
+
+        var sessions: [Assignment] = []
+        let step = Double(available.count - 1) / Double(n - 1)
+        for i in 0..<n {
+            let idx = min(Int((Double(i) * step).rounded()), available.count - 1)
+            sessions.append(Assignment(title: title, dueDate: available[idx], type: "Study"))
+        }
+        return sessions
+    }
 }
+
+// MARK: - Quiz Row
 
 struct QuizRow: View {
     let subject: String
@@ -299,7 +500,7 @@ struct QuizRow: View {
     }
 }
 
-// MARK: - Quiz
+// MARK: - Quiz (Feature 4: PDF upload added)
 
 struct QuizView: View {
     @EnvironmentObject private var engine: QuizEngine
@@ -307,6 +508,7 @@ struct QuizView: View {
     @State private var customTopic = ""
     @State private var showManualCreator = false
     @State private var pendingTopic: String? = nil
+    @State private var showFilePicker = false
 
     private let presetTopics = ["Science", "Math", "History"]
 
@@ -336,7 +538,37 @@ struct QuizView: View {
                 ManualQuizCreatorView()
                     .environmentObject(engine)
             }
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: [UTType.pdf],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    handlePDFSelection(url: url)
+                case .failure(let error):
+                    engine.errorMessage = "Could not open file: \(error.localizedDescription)"
+                }
+            }
         }
+    }
+
+    private func handlePDFSelection(url: URL) {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+        guard let doc = PDFDocument(url: url) else {
+            engine.errorMessage = "Could not read the PDF. Please make sure it's a valid PDF file."
+            return
+        }
+
+        guard let text = doc.string, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            engine.errorMessage = "This PDF appears to be empty or contains only images. Please try a PDF with text content."
+            return
+        }
+
+        Task { await engine.startQuizFromPDF(text: text) }
     }
 
     // MARK: Topic selection
@@ -393,9 +625,7 @@ struct QuizView: View {
                         .font(.headline)
 
                     ForEach(presetTopics, id: \.self) { topic in
-                        Button(action: {
-                            pendingTopic = topic
-                        }) {
+                        Button(action: { pendingTopic = topic }) {
                             Text(topic)
                                 .font(.headline)
                                 .foregroundColor(.white)
@@ -422,6 +652,31 @@ struct QuizView: View {
                                 .foregroundColor(customTopic.trimmingCharacters(in: .whitespaces).isEmpty ? .gray : .blue)
                         }
                         .disabled(customTopic.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(16)
+                .padding(.horizontal, 20)
+
+                // Upload Study Materials (Feature 4)
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Upload Study Materials", systemImage: "doc.text.fill")
+                        .font(.headline)
+                    Text("Select a PDF and we'll generate 5 quiz questions from it.")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Button(action: { showFilePicker = true }) {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Choose PDF")
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .cornerRadius(12)
                     }
                 }
                 .padding()
@@ -839,7 +1094,7 @@ struct TypingIndicator: View {
     }
 }
 
-// MARK: - Calendar
+// MARK: - Calendar (Study sessions shown with purple badge)
 
 struct CalendarTabView: View {
     @State private var assignments: [Assignment] = []
@@ -905,7 +1160,8 @@ struct CalendarTabView: View {
                                             .font(.caption)
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 2)
-                                            .background(Color.blue.opacity(0.1))
+                                            .background(badgeBg(for: assignment.type))
+                                            .foregroundColor(badgeFg(for: assignment.type))
                                             .cornerRadius(4)
                                         Text(assignment.displayDate)
                                             .font(.caption)
@@ -945,6 +1201,14 @@ struct CalendarTabView: View {
             }
             .onAppear { loadAssignments() }
         }
+    }
+
+    private func badgeBg(for type: String) -> Color {
+        type == "Study" ? Color.purple.opacity(0.12) : Color.blue.opacity(0.1)
+    }
+
+    private func badgeFg(for type: String) -> Color {
+        type == "Study" ? .purple : .blue
     }
 
     private var addAssignmentSheet: some View {
@@ -1016,7 +1280,7 @@ struct CalendarTabView: View {
     }
 }
 
-// MARK: - Settings
+// MARK: - Settings (Feature 6: Edit Profile + Reset Profile)
 
 struct SettingsView: View {
     @EnvironmentObject private var quizEngine: QuizEngine
@@ -1030,18 +1294,35 @@ struct SettingsView: View {
     @State private var keySaved = false
     @State private var showClearQuizAlert = false
     @State private var showClearChatAlert = false
-    @State private var showResetOnboardingAlert = false
-
-    private let grades = ["Freshman", "Sophomore", "Junior", "Senior"]
+    @State private var showResetProfileAlert = false
+    @State private var showEditProfile = false
 
     var body: some View {
         NavigationView {
             Form {
-                Section("Profile") {
-                    TextField("Your Name", text: $userName)
-                    Picker("Grade", selection: $userGrade) {
-                        ForEach(grades, id: \.self) { Text($0) }
+                // Edit Profile section at top
+                Section {
+                    Button(action: { showEditProfile = true }) {
+                        Label("Edit Profile", systemImage: "person.circle.fill")
+                            .foregroundColor(.blue)
                     }
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(userName.isEmpty ? "Name not set" : userName)
+                                .foregroundColor(userName.isEmpty ? .gray : .primary)
+                            Text(userGrade)
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { showEditProfile = true }
+                } header: {
+                    Text("Profile")
                 }
 
                 Section("Preferences") {
@@ -1092,13 +1373,22 @@ struct SettingsView: View {
                         Button("Cancel", role: .cancel) {}
                     }
 
-                    Button("Reset Onboarding") {
-                        showResetOnboardingAlert = true
+                    Button("Reset Profile", role: .destructive) {
+                        showResetProfileAlert = true
                     }
-                    .foregroundColor(.blue)
-                    .alert("Reset Onboarding?", isPresented: $showResetOnboardingAlert) {
-                        Button("Reset", role: .destructive) { hasCompletedOnboarding = false }
+                    .alert("Reset Profile?", isPresented: $showResetProfileAlert) {
+                        Button("Reset", role: .destructive) {
+                            let ud = UserDefaults.standard
+                            ud.removeObject(forKey: "userName")
+                            ud.removeObject(forKey: "userSchool")
+                            ud.removeObject(forKey: "userGrade")
+                            ud.removeObject(forKey: "userCourses")
+                            ud.removeObject(forKey: "userActivities")
+                            hasCompletedOnboarding = false
+                        }
                         Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This will clear all your profile data and show the onboarding screen on next launch.")
                     }
                 }
 
@@ -1126,7 +1416,131 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .sheet(isPresented: $showEditProfile) {
+                EditProfileSheet()
+            }
         }
+    }
+}
+
+// MARK: - Edit Profile Sheet (Feature 6)
+
+struct EditProfileSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var studentName = ""
+    @State private var schoolName = ""
+    @State private var gradeLevel = "Freshman"
+    @State private var courses: [String] = []
+    @State private var activities: [String] = []
+    @State private var newCourse = ""
+    @State private var newActivity = ""
+
+    private let grades = ["Freshman", "Sophomore", "Junior", "Senior"]
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Personal") {
+                    TextField("Name", text: $studentName)
+                        .autocapitalization(.words)
+                    TextField("School", text: $schoolName)
+                        .autocapitalization(.words)
+                    Picker("Grade", selection: $gradeLevel) {
+                        ForEach(grades, id: \.self) { Text($0) }
+                    }
+                }
+
+                Section {
+                    HStack {
+                        TextField("Add course", text: $newCourse)
+                            .autocapitalization(.words)
+                        Button("Add") { addCourse() }
+                            .disabled(newCourse.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if !courses.isEmpty {
+                        WrappingHStack(spacing: 6) {
+                            ForEach(courses, id: \.self) { course in
+                                TagChip(text: course) { courses.removeAll { $0 == course } }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                } header: {
+                    Text("Courses")
+                } footer: {
+                    if courses.isEmpty { Text("No courses added yet") }
+                }
+
+                Section {
+                    HStack {
+                        TextField("Add activity", text: $newActivity)
+                            .autocapitalization(.words)
+                        Button("Add") { addActivity() }
+                            .disabled(newActivity.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if !activities.isEmpty {
+                        WrappingHStack(spacing: 6) {
+                            ForEach(activities, id: \.self) { activity in
+                                TagChip(text: activity) { activities.removeAll { $0 == activity } }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                } header: {
+                    Text("Sports & Activities")
+                } footer: {
+                    if activities.isEmpty { Text("No activities added yet") }
+                }
+            }
+            .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        saveProfile()
+                        dismiss()
+                    }
+                    .disabled(studentName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .onAppear { loadProfile() }
+        }
+    }
+
+    private func loadProfile() {
+        let ud = UserDefaults.standard
+        studentName = ud.string(forKey: "userName") ?? ""
+        schoolName = ud.string(forKey: "userSchool") ?? ""
+        gradeLevel = ud.string(forKey: "userGrade") ?? "Freshman"
+        if let d = ud.data(forKey: "userCourses"),
+           let c = try? JSONDecoder().decode([String].self, from: d) { courses = c }
+        if let d = ud.data(forKey: "userActivities"),
+           let a = try? JSONDecoder().decode([String].self, from: d) { activities = a }
+    }
+
+    private func saveProfile() {
+        let ud = UserDefaults.standard
+        ud.set(studentName.trimmingCharacters(in: .whitespaces), forKey: "userName")
+        ud.set(schoolName.trimmingCharacters(in: .whitespaces), forKey: "userSchool")
+        ud.set(gradeLevel, forKey: "userGrade")
+        if let d = try? JSONEncoder().encode(courses) { ud.set(d, forKey: "userCourses") }
+        if let d = try? JSONEncoder().encode(activities) { ud.set(d, forKey: "userActivities") }
+    }
+
+    private func addCourse() {
+        let t = newCourse.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty, !courses.contains(t) else { return }
+        courses.append(t); newCourse = ""
+    }
+
+    private func addActivity() {
+        let t = newActivity.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty, !activities.contains(t) else { return }
+        activities.append(t); newActivity = ""
     }
 }
 
@@ -1139,7 +1553,6 @@ struct ManualQuizCreatorView: View {
     @State private var builtQuestions: [Question] = []
     @State private var showAddForm = false
 
-    // Per-question form state
     @State private var qText = ""
     @State private var opts = ["", "", "", ""]
     @State private var correctIdx = 0
